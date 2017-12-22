@@ -16,6 +16,7 @@ app.set('views', 'files/client');
 
 // authorization server information
 var authServer = {
+	// same server but different endpoints for authorize & token service.
 	authorizationEndpoint: 'http://localhost:9001/authorize',
 	tokenEndpoint: 'http://localhost:9001/token'
 };
@@ -27,14 +28,14 @@ var authServer = {
  * Add the client information in here
  */
 var client = {
-	"client_id": "",
-	"client_secret": "",
-	"redirect_uris": ["http://localhost:9000/callback"]
+	"client_id": "oauth-client-1", //provided by server
+	"client_secret": "oauth-client-secret-1", // provided by server
+	"redirect_uris": ["http://localhost:9000/callback"] // provided by client itself
 };
 
 var protectedResource = 'http://localhost:9002/resource';
 
-var state = null;
+var state = randomstring.generate();
 
 var access_token = null;
 var scope = null;
@@ -48,6 +49,15 @@ app.get('/authorize', function(req, res){
 	/*
 	 * Send the user to the authorization server
 	 */
+
+	var authorizeUrl = buildUrl(authServer.authorizationEndpoint, {
+		response_type: 'code',
+		client_id: client.client_id,
+		redirect_uri: client.redirect_uris[0],
+		state: state
+	});
+
+	res.redirect(authorizeUrl);
 	
 });
 
@@ -56,6 +66,34 @@ app.get('/callback', function(req, res){
 	/*
 	 * Parse the response from the authorization server and get a token
 	 */
+	if(req.query.state != state) {
+		// check state here in case an attacker request the callback and get a token.
+		res.render('error', { error: 'State value did not match!' });
+		return;
+	}
+	var code = req.query.code;
+	var form_data = qs.stringify({
+		grant_type: 'authorization_code',
+		code: code,
+		redirect_uri: client.redirect_uris[0] // also include redirect_uri even if no use for security concern. Specified by OAuth protocol.
+	});
+	
+	var headers = {
+		'Content-Type': 'application/x-www-form-urlencoded',
+		'Authorization': 'Basic ' + encodeClientCredentials(client.client_id, client.client_secret)
+	};
+
+	var tokRes = request('POST', authServer.tokenEndpoint, {
+		body: form_data,
+		headers: headers
+	});
+
+	var body = JSON.parse(tokRes.getBody());
+	access_token = body.access_token;
+
+	state = randomstring.generate(); // update state here for security.
+
+	res.render('index', { access_token: body.access_token, scope: scope });
 	
 });
 
