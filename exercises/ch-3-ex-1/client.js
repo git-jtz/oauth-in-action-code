@@ -35,7 +35,7 @@ var client = {
 
 var protectedResource = 'http://localhost:9002/resource';
 
-var state = randomstring.generate();
+var state = null;
 
 var access_token = null;
 var scope = null;
@@ -50,6 +50,7 @@ app.get('/authorize', function(req, res){
 	 * Send the user to the authorization server
 	 */
 
+	state = randomstring.generate();
 	var authorizeUrl = buildUrl(authServer.authorizationEndpoint, {
 		response_type: 'code',
 		client_id: client.client_id,
@@ -66,6 +67,7 @@ app.get('/callback', function(req, res){
 	/*
 	 * Parse the response from the authorization server and get a token
 	 */
+	//state is actually generated with current session info. In CSRF attack, the session is different. The check below will fail.
 	if(req.query.state != state) {
 		// check state here in case an attacker request the callback and get a token.
 		res.render('error', { error: 'State value did not match!' });
@@ -80,7 +82,8 @@ app.get('/callback', function(req, res){
 	
 	var headers = {
 		'Content-Type': 'application/x-www-form-urlencoded',
-		'Authorization': 'Basic ' + encodeClientCredentials(client.client_id, client.client_secret)
+		'Authorization': 'Basic ' + encodeClientCredentials(client.client_id, client.client_secret) // Note that this is not user authentication but the client's auth. 
+		//At the time, user has already been authenticated.
 	};
 
 	var tokRes = request('POST', authServer.tokenEndpoint, {
@@ -91,7 +94,7 @@ app.get('/callback', function(req, res){
 	var body = JSON.parse(tokRes.getBody());
 	access_token = body.access_token;
 
-	state = randomstring.generate(); // update state here for security.
+	//state = randomstring.generate(); // update state here for security.
 
 	res.render('index', { access_token: body.access_token, scope: scope });
 	
